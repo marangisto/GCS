@@ -7,36 +7,46 @@ import Control.Exception
 import Control.Monad.IO.Class
 import Control.Monad
 import Data.List (stripPrefix)
+import Data.IORef
+
+type GCRef = ([B.ByteString], [B.ByteString])
 
 main :: IO ()
-main = withSerial "COM3" defaultSerialSettings { commSpeed = CS115200 } $ \s -> do
+main = withSerial "COM3" defaultSerialSettings { commSpeed = CS115200 } $ \port -> do
+    liftIO $ setCurrentDirectory "//GOLEM/marten/Fusion 360 CAM/nc"
     liftIO $ threadDelay 100000
-    getSerial s >>= putStr . B.unpack
-    processInput s
+    getSerial port >>= putStr . B.unpack
+    processInput port =<< liftIO (newIORef ([], []))
 
-processInput :: SerialPort -> IO ()
-processInput s = runInputT defaultSettings loop
+processInput :: SerialPort -> IORef GCRef -> IO ()
+processInput port gcref = runInputT defaultSettings loop
     where loop :: InputT IO ()
           loop = getInputLine "> " >>= \x -> case x of
-              Nothing -> return ()
-              Just cmd | Just x <- stripPrefix ":" cmd -> if x == "q" then return () else do
+              Nothing -> quit
+              Just cmd | Just x <- stripPrefix ":" cmd -> if x == "q" then quit else do
                   e <- liftIO $ try $ case words x of
                       [ "pwd" ]    -> getCurrentDirectory >>= putStrLn
                       ("cd":dir:[])-> setCurrentDirectory dir
                       ("ls":args)  -> ls args
+                      ("r":fp:[])  -> load gcref fp
+                      ("s":[])     -> singleStep port gcref
                       _            -> error "unrecognized gcs command"
                   either (\(SomeException x) -> liftIO $ print x) return e
                   loop
               Just cmd -> do
-                  liftIO $ send s $ B.pack $ cmd ++ "\n"
-                  res <- liftIO $ getSerial s
+                  liftIO $ send port $ B.pack $ cmd ++ "\n"
+                  res <- liftIO $ getSerial port
                   outputStr $ B.unpack res
                   loop
+          quit = do
+              outputStr "quitting..."
+              liftIO $ threadDelay 1000000
+              return ()
 
 getSerial :: SerialPort -> IO B.ByteString
-getSerial s = loop where
+getSerial port = loop where
     loop = do
-        x <- recv s 256
+        x <- recv port 256
         if B.null x then return B.empty else B.append x `liftM` loop
 
 ls :: [String] -> IO ()
@@ -48,4 +58,21 @@ ls args = do
     case mdir of
         Just dir -> listDirectory dir >>= mapM_ putStrLn
         _        -> error "invalid argument"
+
+load :: IORef GCRef -> FilePath -> IO ()
+load gcref fp = do
+    gcode <- (B.lines . B.filter (/='\r')) <$> B.readFile fp
+    mapM_ (putStrLn . B.unpack) $ take 10 gcode
+    putStrLn $ show (length gcode) ++ " lines"
+    writeIORef gcref (gcode, [])
+
+singleStep :: SerialPort -> IORef GCRef -> IO ()
+singleStep port gcref = readIORef gcref >>= \gc -> case gc of
+    ([], _) -> error "eof"
+    ((x:xs), ys) -> do
+        putStrLn $ B.unpack x
+        send port $ B.snoc x '\n'
+        res <- liftIO $ getSerial port
+        putStr $ B.unpack res
+        writeIORef gcref (xs, ys ++ [x])
 
