@@ -61,7 +61,7 @@ ls args = do
 
 load :: IORef GCRef -> FilePath -> IO ()
 load gcref fp = do
-    gcode <- (B.lines . B.filter (/='\r')) <$> B.readFile fp
+    gcode <- B.lines . B.filter (/='\r') <$> B.readFile fp
     mapM_ (putStrLn . B.unpack) $ take 10 gcode
     putStrLn $ show (length gcode) ++ " lines"
     writeIORef gcref (gcode, [])
