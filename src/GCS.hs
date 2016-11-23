@@ -13,7 +13,7 @@ import Data.IORef
 type GCRef = ([B.ByteString], [B.ByteString])
 
 main :: IO ()
-main = withSerial "COM3" defaultSerialSettings { commSpeed = CS115200 } $ \port -> do
+main = withSerial "COM10" defaultSerialSettings { commSpeed = CS115200 } $ \port -> do
     liftIO $ setCurrentDirectory "//GOLEM/marten/Fusion 360 CAM/nc"
     liftIO $ threadDelay 100000
     getSerial port >>= putStr . B.unpack
@@ -46,6 +46,14 @@ processInput port gcref = runInputT defaultSettings loop
               liftIO $ threadDelay 1000000
               return ()
 
+getOneLine :: SerialPort -> IO B.ByteString
+getOneLine port = loop where
+    loop = do
+        x <- recv port 1
+        case B.unpack x of
+           "\n" -> return x
+           _ -> B.append x <$> loop
+
 getSerial :: SerialPort -> IO B.ByteString
 getSerial port = loop where
     loop = do
@@ -75,7 +83,7 @@ singleStep port gcref = readIORef gcref >>= \gc -> case gc of
     ((x:xs), ys) -> do
         putStrLn $ B.unpack x
         send port $ B.snoc x '\n'
-        res <- liftIO $ getSerial port
+        res <- liftIO $ getOneLine port
         putStr $ B.unpack res
         writeIORef gcref (xs, ys ++ [x])
         return True
