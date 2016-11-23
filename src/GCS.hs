@@ -5,6 +5,7 @@ import System.Hardware.Serialport
 import Control.Concurrent
 import Control.Exception
 import Control.Monad.IO.Class
+import Control.Monad.Loops
 import Control.Monad
 import Data.List (stripPrefix)
 import Data.IORef
@@ -28,8 +29,10 @@ processInput port gcref = runInputT defaultSettings loop
                       [ "pwd" ]    -> getCurrentDirectory >>= putStrLn
                       ("cd":dir:[])-> setCurrentDirectory dir
                       ("ls":args)  -> ls args
-                      ("r":fp:[])  -> load gcref fp
-                      ("s":[])     -> singleStep port gcref
+                      ("l":fp:[])  -> load gcref fp
+                      ("s":[])     -> void $ singleStep port gcref
+                      ("r":[])     -> void $ iterateWhile id $ singleStep port gcref
+                      ("rew":[])     -> modifyIORef' gcref $ \(h, t) -> (h ++ t, [])
                       _            -> error "unrecognized gcs command"
                   either (\(SomeException x) -> liftIO $ print x) return e
                   loop
@@ -66,13 +69,14 @@ load gcref fp = do
     putStrLn $ show (length gcode) ++ " lines"
     writeIORef gcref (gcode, [])
 
-singleStep :: SerialPort -> IORef GCRef -> IO ()
+singleStep :: SerialPort -> IORef GCRef -> IO Bool
 singleStep port gcref = readIORef gcref >>= \gc -> case gc of
-    ([], _) -> error "eof"
+    ([], _) -> return False
     ((x:xs), ys) -> do
         putStrLn $ B.unpack x
         send port $ B.snoc x '\n'
         res <- liftIO $ getSerial port
         putStr $ B.unpack res
         writeIORef gcref (xs, ys ++ [x])
+        return True
 
