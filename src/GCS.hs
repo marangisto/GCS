@@ -1,4 +1,5 @@
 import qualified Data.ByteString.Char8 as B
+import System.IO
 import System.Directory
 import System.Console.Haskeline
 import System.Hardware.Serialport
@@ -81,10 +82,13 @@ singleStep :: SerialPort -> IORef GCRef -> IO Bool
 singleStep port gcref = readIORef gcref >>= \gc -> case gc of
     ([], _) -> return False
     ((x:xs), ys) -> do
-        putStrLn $ B.unpack x
+        putStr $ B.unpack x
+        hFlush stdout
         send port $ B.snoc x '\n'
         res <- liftIO $ getOneLine port
-        putStr $ B.unpack res
+        putStr $ pad 40 (B.length x) ++ B.unpack res
         writeIORef gcref (xs, ys ++ [x])
         return True
 
+pad :: Int -> Int -> String
+pad w l = replicate (max (w - l) 0) ' '
