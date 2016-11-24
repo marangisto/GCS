@@ -1,8 +1,10 @@
+{-# LANGUAGE DeriveDataTypeable, RecordWildCards #-}
 import qualified Data.ByteString.Char8 as B
 import System.IO
 import System.Directory
 import System.Process (system)
 import System.Console.Haskeline
+import System.Console.CmdArgs
 import System.Hardware.Serialport
 import Control.Concurrent
 import Control.Exception
@@ -12,15 +14,24 @@ import Control.Monad
 import Data.List (stripPrefix)
 import Data.IORef
 
+data Options = Options
+    { port :: FilePath
+    , dir  :: FilePath
+    } deriving (Show, Data, Typeable)
+
+instance Default Options where def = Options "COM3" "."
+
 type Line = (Int, B.ByteString)
 type GCRef = ([Line], [Line])
 
 main :: IO ()
-main = withSerial "COM3" defaultSerialSettings { commSpeed = CS115200 } $ \port -> do
-    liftIO $ setCurrentDirectory "//GOLEM/marten/Fusion 360 CAM/nc"
-    liftIO $ threadDelay 100000
-    getSerial port >>= putStr . B.unpack
-    processInput port =<< liftIO (newIORef ([], []))
+main = do
+    Options{..} <- cmdArgs def
+    withSerial port defaultSerialSettings { commSpeed = CS115200 } $ \port -> do
+        liftIO $ setCurrentDirectory dir
+        liftIO $ threadDelay 100000
+        getSerial port >>= putStr . B.unpack
+        processInput port =<< liftIO (newIORef ([], []))
 
 processInput :: SerialPort -> IORef GCRef -> IO ()
 processInput port gcref = runInputT defaultSettings loop
