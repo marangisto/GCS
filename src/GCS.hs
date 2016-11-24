@@ -1,6 +1,7 @@
 import qualified Data.ByteString.Char8 as B
 import System.IO
 import System.Directory
+import System.Process (system)
 import System.Console.Haskeline
 import System.Hardware.Serialport
 import Control.Concurrent
@@ -14,7 +15,7 @@ import Data.IORef
 type GCRef = ([B.ByteString], [B.ByteString])
 
 main :: IO ()
-main = withSerial "COM10" defaultSerialSettings { commSpeed = CS115200 } $ \port -> do
+main = withSerial "COM3" defaultSerialSettings { commSpeed = CS115200 } $ \port -> do
     liftIO $ setCurrentDirectory "//GOLEM/marten/Fusion 360 CAM/nc"
     liftIO $ threadDelay 100000
     getSerial port >>= putStr . B.unpack
@@ -26,15 +27,7 @@ processInput port gcref = runInputT defaultSettings loop
           loop = getInputLine "> " >>= \x -> case x of
               Nothing -> quit
               Just cmd | Just x <- stripPrefix ":" cmd -> if x == "q" then quit else do
-                  e <- liftIO $ try $ case words x of
-                      [ "pwd" ]    -> getCurrentDirectory >>= putStrLn
-                      ("cd":dir:[])-> setCurrentDirectory dir
-                      ("ls":args)  -> ls args
-                      ("l":fp:[])  -> load gcref fp
-                      ("s":[])     -> void $ singleStep port gcref
-                      ("r":[])     -> void $ iterateWhile id $ singleStep port gcref
-                      ("rew":[])     -> modifyIORef' gcref $ \(h, t) -> (h ++ t, [])
-                      _            -> error "unrecognized gcs command"
+                  e <- liftIO $ try $ localCommand port gcref x
                   either (\(SomeException x) -> liftIO $ print x) return e
                   loop
               Just cmd -> do
@@ -46,6 +39,17 @@ processInput port gcref = runInputT defaultSettings loop
               outputStr "quitting..."
               liftIO $ threadDelay 1000000
               return ()
+
+localCommand :: SerialPort -> IORef GCRef -> String -> IO ()
+localCommand port gcref cmd = case cmd of
+    _ | Just fp <- stripPrefix "l " cmd -> load gcref fp
+    _ | Just dir <- stripPrefix "cd " cmd -> setCurrentDirectory dir
+    "pwd"       -> getCurrentDirectory >>= putStrLn
+    "s"         -> void $ singleStep port gcref
+    "r"         -> void $ iterateWhile id $ singleStep port gcref
+    "rew"       -> modifyIORef' gcref $ \(h, t) -> (h ++ t, [])
+    ('!':str)   -> void $ system str
+    _           -> error "unrecognized gcs command"
 
 getOneLine :: SerialPort -> IO B.ByteString
 getOneLine port = loop where
@@ -61,15 +65,8 @@ getSerial port = loop where
         x <- recv port 256
         if B.null x then return B.empty else B.append x `liftM` loop
 
-ls :: [String] -> IO ()
-ls args = do
-    mdir <- case args of
-        []     -> fmap Just $ getCurrentDirectory
-        (x:[]) -> return $ Just x
-        _      -> return Nothing
-    case mdir of
-        Just dir -> listDirectory dir >>= mapM_ putStrLn
-        _        -> error "invalid argument"
+bang :: String -> IO ()
+bang = void . systm
 
 load :: IORef GCRef -> FilePath -> IO ()
 load gcref fp = do
