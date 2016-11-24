@@ -12,7 +12,8 @@ import Control.Monad
 import Data.List (stripPrefix)
 import Data.IORef
 
-type GCRef = ([B.ByteString], [B.ByteString])
+type Line = (Int, B.ByteString)
+type GCRef = ([Line], [Line])
 
 main :: IO ()
 main = withSerial "COM3" defaultSerialSettings { commSpeed = CS115200 } $ \port -> do
@@ -66,24 +67,24 @@ getSerial port = loop where
         if B.null x then return B.empty else B.append x `liftM` loop
 
 bang :: String -> IO ()
-bang = void . systm
+bang = void . system
 
 load :: IORef GCRef -> FilePath -> IO ()
 load gcref fp = do
     gcode <- B.lines . B.filter (/='\r') <$> B.readFile fp
     mapM_ (putStrLn . B.unpack) $ take 10 gcode
     putStrLn $ show (length gcode) ++ " lines"
-    writeIORef gcref (gcode, [])
+    writeIORef gcref (zip [1..] gcode, [])
 
 singleStep :: SerialPort -> IORef GCRef -> IO Bool
 singleStep port gcref = readIORef gcref >>= \gc -> case gc of
     ([], _) -> return False
-    ((x:xs), ys) -> do
-        putStr $ B.unpack x
+    ((x@(i, s):xs), ys) -> do
+        putStr $ show i ++ "\t" ++ B.unpack s
         hFlush stdout
-        send port $ B.snoc x '\n'
+        send port $ B.snoc s '\n'
         res <- liftIO $ getOneLine port
-        putStr $ pad 40 (B.length x) ++ B.unpack res
+        putStr $ pad 40 (B.length s) ++ B.unpack res
         writeIORef gcref (xs, ys ++ [x])
         return True
 
