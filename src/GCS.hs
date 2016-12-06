@@ -91,11 +91,18 @@ singleStep :: SerialPort -> IORef GCRef -> IO Bool
 singleStep port gcref = readIORef gcref >>= \gc -> case gc of
     ([], _) -> return False
     ((x@(i, s):xs), ys) -> do
-        putStr $ show i ++ "\t" ++ B.unpack s
+        let gcode = B.unpack s
+        putStr $ show i ++ "\t" ++ gcode
         hFlush stdout
-        send port $ B.snoc s '\n'
-        res <- liftIO $ getOneLine port
-        putStr $ pad 40 (B.length s) ++ B.unpack res
+        case gcode of
+            ('T':_) -> do
+                putStr "tool change (press enter when done):"
+                hFlush stdout
+                void getLine
+            _ -> do
+                send port $ B.snoc s '\n'
+                res <- liftIO $ getOneLine port
+                putStr $ pad 40 (B.length s) ++ B.unpack res
         writeIORef gcref (xs, ys ++ [x])
         return True
 
