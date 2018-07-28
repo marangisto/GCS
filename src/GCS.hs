@@ -59,6 +59,7 @@ localCommand port gcref cmd = case cmd of
     "pwd"       -> getCurrentDirectory >>= putStrLn
     "s"         -> void $ singleStep port gcref
     "r"         -> void $ iterateWhile id $ singleStep port gcref
+    "x"         -> reset port
     "rew"       -> modifyIORef' gcref $ \(h, t) -> (h ++ t, [])
     ('!':str)   -> void $ system str
     _           -> error "unrecognized gcs command"
@@ -105,6 +106,12 @@ singleStep port gcref = readIORef gcref >>= \gc -> case gc of
                 putStr $ pad 40 (B.length s) ++ B.unpack res
         writeIORef gcref (xs, ys ++ [x])
         return True
+
+reset :: SerialPort -> IO ()
+reset port = do
+    liftIO $ send port $ B.pack "\^X"
+    res <- liftIO $ getSerial port
+    putStr $ B.unpack res
 
 pad :: Int -> Int -> String
 pad w l = replicate (max (w - l) 0) ' '
