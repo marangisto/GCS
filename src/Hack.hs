@@ -4,15 +4,13 @@ module Level (main) where
 import Data.Maybe
 import Data.Either
 
-type Pos = Maybe Double
+type Pos = (Maybe Double, Maybe Double, Maybe Double)
 type Feed = Maybe Double
-
-data Coord = X Double | Y Double | Z Double deriving (Show)
 
 data GCode
     = Percent
-    | Fast [Coord]
-    | Move [Coord] Feed
+    | Fast Pos
+    | Move Pos Feed
     | Comment String
     | Unhandled
     deriving (Show)
@@ -21,31 +19,23 @@ parseLine :: String -> GCode
 parseLine s@('(':_) = Comment $ filter (/='\r') s
 parseLine s
     | [ "%" ] <- xs = Percent
-    | ("G0" : ys) <- xs = Fast $ onlyCoords ys
-    | ("G1" : ys) <- xs = uncurry Move $ coordsAndFeed ys
+    | ("G0" : ys) <- xs = Fast $ onlyCoords' ys
+    | ("G1" : ys) <- xs = uncurry Move $ coordsAndFeed' ys
     | otherwise = Unhandled
     where xs = words s
 
-onlyCoords :: [String] -> [Coord]
-onlyCoords xs = case partitionEithers $ map parseCoord xs of
-    ([], ys) -> ys
-    _ -> error "only coordinates expected"
+onlyCoords' :: [String] -> Pos
+onlyCoords' = foldl g (Nothing, Nothing, Nothing)
+    where g (_, y, z) ('X' : xs) = (Just $ read xs, y, z)
+          g (x, _, z) ('Y' : xs) = (x, Just $ read xs, z)
+          g (x, y, _) ('Z' : xs) = (x, y, Just $ read xs)
 
-coordsAndFeed :: [String] -> ([Coord], Feed)
-coordsAndFeed xs = case partitionEithers $ map parseCoord xs of
-    ([], ys) -> (ys, Nothing)
-    ((f:[]), ys) -> (ys, parseFeed f)
-    _ -> error "coordinates and feed expected"
-
-parseCoord :: String -> Either String Coord
-parseCoord ('X' : xs) = Right $ X $ read xs
-parseCoord ('Y' : xs) = Right $ Y $ read xs
-parseCoord ('Z' : xs) = Right $ Z $ read xs
-parseCoord s = Left s
-
-parseFeed :: String -> Maybe Double
-parseFeed ('F' : xs) = Just $ read xs
-parseFeed _ = Nothing
+coordsAndFeed' :: [String] -> (Pos, Feed)
+coordsAndFeed' = foldl g ((Nothing, Nothing, Nothing), Nothing)
+    where g ((_, y, z), f) ('X' : xs) = ((Just $ read xs, y, z), f)
+          g ((x, _, z), f) ('Y' : xs) = ((x, Just $ read xs, z), f)
+          g ((x, y, _), f) ('Z' : xs) = ((x, y, Just $ read xs), f)
+          g ((x, y, z), _) ('F' : xs) = ((x, y, z), Just $ read xs)
 
 data State = State
     { x :: Maybe Double
@@ -59,22 +49,32 @@ expandCode = tail . map snd . scanl (\(s,_) c -> advance s c) (s0, Percent)
     where s0 = State Nothing Nothing Nothing Nothing
 
 advance :: State -> GCode -> (State, GCode)
-advance s (Fast xs)
-    = let s' = applyCoords xs s
-       in (s', Fast $ getCoords s')
-advance s (Move xs f)
-    = let s' = applyFeed f $ applyCoords xs s
-       in (s', Move (getCoords s') $ getFeed s')
+advance s (Fast pos) = let s' = updatePos pos s in (s', Fast $ getPos s')
+advance s (Move pos f) = let s' = updatePosFeed (pos, f) s in (s', Move (getPos s') (getFeed s'))
 advance s c = (s, c)
 
-applyCoords :: [Coord] -> State -> State
-applyCoords xs s = foldl g s xs
-    where g s (X x') = s { x = Just x' }
-          g s (Y y') = s { y = Just y' }
-          g s (Z z') = s { z = Just z' }
+updatePos :: Pos -> State -> State
+updatePos (x', y', z') s@State{..} = s
+    { x = x' <|> x
+    , y = y' <|> y
+    , z = z' <|> z
+    }
 
-getCoords :: State -> [Coord]
-getCoords State{..} = catMaybes [ X <$> x, Y <$> y, Z <$> z ]
+updatePosFeed :: (Pos, Feed) -> State -> State
+updatePosFeed ((x', y', z'), f') s@State{..} = s
+    { x = x' <|> x
+    , y = y' <|> y
+    , z = z' <|> z
+    , f = f' <|> f
+    }
+
+(<|>) :: Maybe a -> Maybe a -> Maybe a
+Just x <|> _ = Just x
+_ <|> Just y = Just y
+_ <|> _ = Nothing
+
+getPos :: State -> Pos
+getPos State{..} = (x, y, z)
 
 applyFeed :: Feed -> State -> State
 applyFeed (Just f') s = s { f = Just f' }
