@@ -1,4 +1,3 @@
-{-# LANGUAGE RecordWildCards #-}
 module Level (main) where
 
 import Data.Maybe
@@ -38,34 +37,28 @@ coordsAndFeed' = foldl g ((Nothing, Nothing, Nothing), Nothing)
           g ((x, y, z), _) ('F' : xs) = ((x, y, z), Just $ read xs)
 
 data State = State
-    { x :: Maybe Double
-    , y :: Maybe Double
-    , z :: Maybe Double
-    , f :: Maybe Double
+    { pos   :: Pos
+    , feed  :: Feed
     } deriving (Show)
 
 expandCode :: [GCode] -> [GCode]
 expandCode = tail . map snd . scanl (\(s,_) c -> advance s c) (s0, Percent)
-    where s0 = State Nothing Nothing Nothing Nothing
+    where s0 = State (Nothing, Nothing, Nothing) Nothing
 
 advance :: State -> GCode -> (State, GCode)
-advance s (Fast pos) = let s' = updatePos pos s in (s', Fast $ getPos s')
-advance s (Move pos f) = let s' = updatePosFeed (pos, f) s in (s', Move (getPos s') (getFeed s'))
+advance s (Fast p) = let s' = updatePos p s in (s', Fast $ pos s')
+advance s (Move p f) = let s' = updatePosFeed (p, f) s in (s', Move (pos s') (feed s'))
 advance s c = (s, c)
 
 updatePos :: Pos -> State -> State
-updatePos (x', y', z') s@State{..} = s
-    { x = x' <|> x
-    , y = y' <|> y
-    , z = z' <|> z
+updatePos (x', y', z') s@State{pos = (x, y, z)} = s
+    { pos = (x' <|> x, y' <|> y, z' <|> z)
     }
 
 updatePosFeed :: (Pos, Feed) -> State -> State
-updatePosFeed ((x', y', z'), f') s@State{..} = s
-    { x = x' <|> x
-    , y = y' <|> y
-    , z = z' <|> z
-    , f = f' <|> f
+updatePosFeed ((x', y', z'), f') s@State{pos = (x, y, z), feed = f} = s
+    { pos = (x' <|> x, y' <|> y, z' <|> z)
+    , feed = f' <|> f
     }
 
 (<|>) :: Maybe a -> Maybe a -> Maybe a
@@ -73,15 +66,9 @@ Just x <|> _ = Just x
 _ <|> Just y = Just y
 _ <|> _ = Nothing
 
-getPos :: State -> Pos
-getPos State{..} = (x, y, z)
-
 applyFeed :: Feed -> State -> State
-applyFeed (Just f') s = s { f = Just f' }
+applyFeed (Just f') s = s { feed = Just f' }
 applyFeed _ s = s
-
-getFeed :: State -> Feed
-getFeed State{..} = f
 
 main :: IO ()
 main = do
