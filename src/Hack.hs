@@ -48,15 +48,15 @@ parseFeed ('F' : xs) = Just $ read xs
 parseFeed _ = Nothing
 
 data State = State
-    { x :: Double
-    , y :: Double
-    , z :: Double
-    , f :: Double
+    { x :: Maybe Double
+    , y :: Maybe Double
+    , z :: Maybe Double
+    , f :: Maybe Double
     } deriving (Show)
 
 expandCode :: [GCode] -> [GCode]
-expandCode = map snd . scanl g ((State 0 0 0 0), Percent)
-    where g (s, _) c = advance s c
+expandCode = tail . map snd . scanl (\(s,_) c -> advance s c) (s0, Percent)
+    where s0 = State Nothing Nothing Nothing Nothing
 
 advance :: State -> GCode -> (State, GCode)
 advance s (Fast xs)
@@ -69,23 +69,22 @@ advance s c = (s, c)
 
 applyCoords :: [Coord] -> State -> State
 applyCoords xs s = foldl g s xs
-    where g s (X x') = s { x = x' }
-          g s (Y y') = s { y = y' }
-          g s (Z z') = s { z = z' }
+    where g s (X x') = s { x = Just x' }
+          g s (Y y') = s { y = Just y' }
+          g s (Z z') = s { z = Just z' }
 
 getCoords :: State -> [Coord]
-getCoords State{..} = [ X x, Y y, Z z ]
+getCoords State{..} = catMaybes [ X <$> x, Y <$> y, Z <$> z ]
 
 applyFeed :: Feed -> State -> State
-applyFeed (Just f') s = s { f = f' }
+applyFeed (Just f') s = s { f = Just f' }
 applyFeed _ s = s
 
 getFeed :: State -> Feed
-getFeed State{..} = Just f
+getFeed State{..} = f
 
 main :: IO ()
 main = do
-    putStrLn "levelling..."
     s <- readFile "/home/marten/Desktop/samba/CNC/vco-contour-4mm.nc"
     mapM_ print . expandCode . map parseLine $ lines s
 
