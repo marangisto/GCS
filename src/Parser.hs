@@ -25,8 +25,10 @@ int :: RE Char Int
 int = read <$> some (psym isDigit)
 
 double :: RE Char Double
-double = read <$> some (psym isDouble)  -- FIXME: better regex
-    where isDouble c = isDigit c || c `elem` [ '-', '.' ]
+double = read <$> ((++) <$> sign <*> ((++) <$> integer <*> fraction))
+    where integer = (++) <$> many (psym isDigit) <*> few (sym '.')
+          fraction = some (psym isDigit)
+          sign = few (sym '-')
 
 space :: RE Char String
 space = many $ psym isSpace
