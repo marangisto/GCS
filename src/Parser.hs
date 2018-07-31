@@ -22,10 +22,10 @@ data GCode
     deriving Show
 
 int :: RE Char Int
-int = read <$> many (psym isDigit)
+int = read <$> some (psym isDigit)
 
 double :: RE Char Double
-double = read <$> many (psym isDouble)  -- FIXME: better regex
+double = read <$> some (psym isDouble)  -- FIXME: better regex
     where isDouble c = isDigit c || c `elem` [ '-', '.' ]
 
 space :: RE Char String
