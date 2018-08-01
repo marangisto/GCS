@@ -2,6 +2,7 @@ module Main (GCode(..), parseGCode, main) where
 
 import System.FilePath
 import Text.Regex.Applicative
+import Data.Foldable
 import Data.Maybe
 import Data.Char hiding (Space)
 
@@ -37,19 +38,21 @@ comment :: RE Char String
 comment = filter (/='\r') <$> ((:) <$> sym '(' <*> many anySym)
 
 gcode :: RE Char GCode
-gcode = const G <$> sym 'G' <*> int
-    <|> const M <$> sym 'M' <*> int
-    <|> const T <$> sym 'T' <*> int
-    <|> const X <$> sym 'X' <*> double
-    <|> const Y <$> sym 'Y' <*> double
-    <|> const Z <$> sym 'Z' <*> double
-    <|> const I <$> sym 'I' <*> double
-    <|> const J <$> sym 'J' <*> double
-    <|> const K <$> sym 'K' <*> double
-    <|> const F <$> sym 'F' <*> double
-    <|> const S <$> sym 'S' <*> double
-    <|> Comment <$> comment
-    <|> Percent <$ sym '%'
+gcode = asum
+    [ G <$ sym 'G' <*> int
+    , M <$ sym 'M' <*> int
+    , T <$ sym 'T' <*> int
+    , X <$ sym 'X' <*> double
+    , Y <$ sym 'Y' <*> double
+    , Z <$ sym 'Z' <*> double
+    , I <$ sym 'I' <*> double
+    , J <$ sym 'J' <*> double
+    , K <$ sym 'K' <*> double
+    , F <$ sym 'F' <*> double
+    , S <$ sym 'S' <*> double
+    , Comment <$> comment
+    , Percent <$ sym '%'
+    ]
 
 block :: RE Char [GCode]
 block = catMaybes <$> many ((Just <$> gcode) <|> (Nothing <$ space))
