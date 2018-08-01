@@ -26,8 +26,9 @@ int :: RE Char Int
 int = read <$> some (psym isDigit)
 
 double :: RE Char Double
-double = read <$> ((++) <$> sign <*> ((++) <$> integer <*> fraction))
-    where integer = (++) <$> many (psym isDigit) <*> few (sym '.')
+double = read <$> (combine <$> sign <*> integer <*> fraction)
+    where combine x y z = x ++ y ++ z
+          integer = (++) <$> many (psym isDigit) <*> few (sym '.')
           fraction = some (psym isDigit)
           sign = few (sym '-')
 
