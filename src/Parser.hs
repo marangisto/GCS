@@ -1,4 +1,4 @@
-module Main (GCode(..), parseGCode, main) where
+module Parser (GCode(..), parseGCode, main) where
 
 import System.FilePath
 import Text.Regex.Applicative
