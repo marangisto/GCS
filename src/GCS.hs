@@ -60,7 +60,7 @@ localCommand port gcref cmd = case cmd of
     "s"         -> void $ singleStep port gcref
     "r"         -> void $ iterateWhile id $ singleStep port gcref
     "x"         -> reset port
-    "rew"       -> modifyIORef' gcref $ \(h, t) -> (h ++ t, [])
+    "rew"       -> modifyIORef' gcref $ \(h, t) -> (t ++ h, [])
     ('!':str)   -> void $ system str
     _           -> error "unrecognized gcs command"
 
