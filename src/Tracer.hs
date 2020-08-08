@@ -1,6 +1,8 @@
-module Tracer (main, State(..), traceBlocks) where
+{-# LANGUAGE RecordWildCards #-}
+module Tracer (main, Variables(..), traceBlocks) where
 
 import Parser (GCode(..), parseGCode)
+import Control.Monad.State
 import System.FilePath
 import Data.Default
 import Data.Maybe
@@ -18,18 +20,17 @@ data Units = Inches | MilliMeters deriving (Eq, Show)
 type Fixture = Int
 
 -- G90 G91
-data PosMode = Absolute | Incremental deriving (Eq, Show)
+data MoveMode = Absolute | Incremental deriving (Eq, Show)
 
 -- G94
 data FeedMode = PerMinute deriving (Eq, Show)
 
-
-data State = State
+data Variables = Variables
     { motion    :: Motion
     , plane     :: Plane
     , units     :: Units
     , fixture   :: Fixture
-    , posMode   :: PosMode
+    , moveMode  :: MoveMode
     , feedMode  :: FeedMode
     , f         :: Maybe Double
     , x         :: Maybe Double
@@ -40,10 +41,10 @@ data State = State
     , k         :: Maybe Double
     } deriving (Show)
 
-instance Default State where
-    def = State Rapid XY Inches 1 Absolute PerMinute def def def def def def def
+instance Default Variables where
+    def = Variables Rapid XY Inches 1 Absolute PerMinute def def def def def def def
 
-applyCode :: GCode -> State -> State
+applyCode :: GCode -> Variables -> Variables
 applyCode (G 0) s = s { motion = Rapid }
 applyCode (G 1) s = s { motion = Linear }
 applyCode (G 2) s = s { motion = ArcCW }
@@ -54,8 +55,8 @@ applyCode (G 19) s = s { plane = YZ }
 applyCode (G 20) s = s { units = Inches }
 applyCode (G 21) s = s { units = MilliMeters }
 applyCode (G n) s | n >= 54 && n <= 59 = s { fixture = n - 53 }
-applyCode (G 90) s = s { posMode = Absolute }
-applyCode (G 91) s = s { posMode = Incremental }
+applyCode (G 90) s = s { moveMode = Absolute }
+applyCode (G 91) s = s { moveMode = Incremental }
 applyCode (G 94) s = s { feedMode = PerMinute }
 applyCode (F v) s = s { f = Just v }
 applyCode (X v) s = s { x = Just v }
@@ -75,11 +76,28 @@ applyCode Percent s = s -- FIXME
 applyCode (Comment c) s = s -- FIXME
 applyCode c _ = error $ "unhandled GCODE: " ++ show c
 
-applyBlock :: [GCode] -> State -> State
+applyBlock :: [GCode] -> Variables -> Variables
 applyBlock gs s = foldl (flip applyCode) s { i = Nothing, j = Nothing, k = Nothing } gs
 
-traceBlocks :: [[GCode]] -> [State]
+traceBlocks :: [[GCode]] -> [Variables]
 traceBlocks = scanl (flip applyBlock) def
+
+type Coord = (Double, Double, Double)
+
+data Action
+    = Move Coord
+    | Other
+    deriving Show
+
+updatePos :: GCode -> State Variables ()
+updatePos (X v) = modify (\s@Variables{..} -> s { x = x + v })
+
+sapplyBlock :: [GCode] -> State Variables Action
+sapplyBlock = undefined
+
+straceBlocks :: [[GCode]] -> ([GCode], Variables)
+straceBlocks xs = runState (mapM f xs) def
+    where f = undefined
 
 main :: IO ()
 main = do
